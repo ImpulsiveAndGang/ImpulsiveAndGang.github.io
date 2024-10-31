@@ -1,141 +1,100 @@
 import React, { useState } from 'react';
+import { BracketsManager } from 'brackets-manager';
+import { InMemoryDatabase } from 'brackets-memory-db';
+import { clear } from 'console';
+
+declare global {
+  interface Window {
+    bracketsViewer: any;
+  }
+}
+const storage = new InMemoryDatabase();
+const manager = new BracketsManager(storage);
 
 interface TeamProps {
   teamName: string;
   onDelete: () => void;
 }
 
-/*
-interface here defining matches , matches is a list of dicts
-each dict has the bracket name, match id, winner, and next match id, t1 and t2 are the teams
-*/
-// Removed redundant Match interface
-
-interface Matches {
-  matches: Match[];
-}
-
 interface Team {
   name: string;
 }
 
-interface Match {
-  id: number;
-  round: number;
-  isWinnerBracket: boolean;
-  teams: Team[];
-  winnerTo: number | null;
-  loserTo: number | null;
-  previousMatchIds: number[];
-  winner: Team | null; // To store the winner after the match is completed
+interface tournamentData {
+  participant: {
+    id: number;
+    tournament_id: number;
+    name: string;
+  }[];
+  stage: {
+    id: number;
+    tournament_id: number;
+    name: string;
+    type: string;
+    number: number;
+    settings: {
+      seedOrdering: string[];
+      grandFinal: string;
+      matchesChildCount: number;
+      size: number;
+    };
+  }[];
+  group: {
+    id: number;
+    stage_id: number;
+    number: number;
+  }[];
+  round: {
+    id: number;
+    number: number;
+    stage_id: number;
+    group_id: number;
+  }[];
+  match: {
+    id: number;
+    number: number;
+    stage_id: number;
+    group_id: number;
+    round_id: number;
+    child_count: number;
+    status: number;
+    opponent1: {
+      id: number | null;
+      position?: number;
+    };
+    opponent2: {
+      id: number | null;
+      position?: number;
+    };
+  }[];
+  match_game: any[];
 }
 
-interface Bracket {
-  matches: Match[];
-}
 
-function createDoubleEliminationBracket(teamNames: string[]): Bracket {
-  const totalTeams = teamNames.length;
-  const bracket: Bracket = { matches: [] };
-  let matchCounter = 1;
+const createTournament = async (teams: string[]): Promise<any> => {
+  try {
 
-  // Helper to create a match with connections
-  function createMatch(round: number, isWinnerBracket: boolean, previousMatchIds: number[] = []): Match {
-      const match: Match = {
-          id: matchCounter++,
-          round,
-          isWinnerBracket,
-          winnerTo: null,
-          loserTo: null,
-          teams: [],
-          previousMatchIds,
-          winner: null // Placeholder to assign the winner
-      };
-      bracket.matches.push(match);
-      return match;
-  }
+    // fill up the teams array with the NO_TEAM string to the next power of 2
+    const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(teams.length)));
+    const noTeam = 'NO_TEAM';
+    const noTeamCount = nextPowerOf2 - teams.length;
+    const noTeams = Array.from({ length: noTeamCount }, (_, i) => `${noTeam}_${i + 1}`);
+    const allTeams = [...teams, ...noTeams];
+    
+    console.log(allTeams);
 
-  // Convert team names to Team objects
-  const teams: Team[] = teamNames.map((name) => ({ name }));
-
-  // Set up the Winners Bracket
-  const winnersRounds = Math.ceil(Math.log2(totalTeams));
-  let currentWinnersMatches: Match[] = [];
-
-  // Initial round matches
-  for (let i = 0; i < totalTeams / 2; i++) {
-      const match = createMatch(1, true);
-      match.teams = [teams[i * 2], teams[i * 2 + 1]];
-      currentWinnersMatches.push(match);
-  }
-
-  // Winners bracket progression
-  for (let round = 2; round <= winnersRounds; round++) {
-      const nextRoundMatches: Match[] = [];
-      for (let i = 0; i < currentWinnersMatches.length / 2; i++) {
-          const match = createMatch(round, true, [
-              currentWinnersMatches[i * 2].id,
-              currentWinnersMatches[i * 2 + 1].id,
-          ]);
-          currentWinnersMatches[i * 2].winnerTo = match.id;
-          currentWinnersMatches[i * 2 + 1].winnerTo = match.id;
-          nextRoundMatches.push(match);
-      }
-      currentWinnersMatches = nextRoundMatches;
-  }
-
-  // Set up the Losers Bracket
-  const losersRounds = winnersRounds * 2 - 1;
-  let currentLosersMatches: Match[] = [];
-
-  for (let round = 1; round <= losersRounds; round++) {
-      const nextRoundMatches: Match[] = [];
-      const numMatches = round % 2 === 1 ? currentLosersMatches.length + 1 : currentLosersMatches.length / 2;
-
-      for (let i = 0; i < numMatches; i++) {
-          const match = createMatch(round, false);
-          nextRoundMatches.push(match);
-
-          // Connect to previous Losers Bracket match
-          if (round % 2 === 0 && i < currentLosersMatches.length / 2) {
-              if (currentLosersMatches[i * 2] && currentLosersMatches[i * 2 + 1]) {
-                  currentLosersMatches[i * 2].winnerTo = match.id;
-                  currentLosersMatches[i * 2 + 1].winnerTo = match.id;
-                  match.previousMatchIds = [
-                      currentLosersMatches[i * 2].id,
-                      currentLosersMatches[i * 2 + 1].id,
-                  ];
-              }
-          }
-      }
-      currentLosersMatches = nextRoundMatches;
-  }
-
-  // Connect Winners Bracket losers to Losers Bracket
-  for (let i = 0; i < winnersRounds - 1; i++) {
-      const losersMatch = bracket.matches.find(
-          (m) => m.round === i * 2 + 1 && !m.isWinnerBracket
-      );
-      const winnersMatch = bracket.matches.find(
-          (m) => m.round === i + 1 && m.isWinnerBracket
-      );
-      if (winnersMatch && losersMatch) {
-          winnersMatch.loserTo = losersMatch.id;
-          losersMatch.previousMatchIds.push(winnersMatch.id);
-      }
-  }
-
-  // Grand Final match
-  const finalWinnerMatch = currentWinnersMatches[0];
-  const finalLoserMatch = currentLosersMatches[0];
-  const grandFinal = createMatch(winnersRounds + 1, true, [
-      finalWinnerMatch.id,
-      finalLoserMatch.id,
-  ]);
-  finalWinnerMatch.winnerTo = grandFinal.id;
-  finalLoserMatch.winnerTo = grandFinal.id;
-
-  return bracket;
+    const tournament = await manager.create.stage({
+      tournamentId: 0,
+      name: 'Spike rush tournament',
+      type: 'double_elimination',
+      seeding:allTeams,
+      settings: { seedOrdering: ['natural'], grandFinal: 'simple' },
+    });
+    //console.log(JSON.stringify(storage, null, 2));
+    return storage;
+  } catch (error) {
+    console.error(error);
+  } 
 }
 
 const Team: React.FC<TeamProps> = ({ teamName, onDelete }) => {
@@ -148,6 +107,8 @@ const Team: React.FC<TeamProps> = ({ teamName, onDelete }) => {
 
 function App() {
   const [teams, setTeams] = useState<string[]>(['Team 1', 'Team 2', 'Team 3']);
+  const [tournament, setTournament] = useState<tournamentData | null>(null);
+
 
   const handleDelete = (teamName: string) => {
     setTeams(teams.filter(team => team !== teamName));
@@ -157,11 +118,49 @@ function App() {
     setTeams([...teams, teamName]);
   };
 
-  const [matches, setMatches] = useState<Matches>({ matches: [] });
+  React.useEffect(() => {
+    let initializeTournament = async () => {
+      let tournamentdata = await createTournament(teams);
+      setTournament(tournamentdata.data);
+      console.log(tournamentdata.data);
+      let stages = [tournamentdata.data.stage[tournamentdata.data.stage.length - 1]];
+      let matches = tournamentdata.data.match;
+      let matchGames = tournamentdata.data.match_game;
+      let participants = tournamentdata.data.participant;
+      //if there is a <div className="brackets-viewer"></div>
+      // delete it
+      const bracketsViewer = document.querySelector('.brackets-viewer');
+      if (bracketsViewer) {
+        bracketsViewer.remove();
+      }
+      // make a new <div className="brackets-viewer"></div>
+      const bracketDiv = document.createElement('div');
+      bracketDiv.className = 'brackets-viewer';
+      // set content of the div to hello
+      bracketDiv.innerHTML = 'Hello';
+      document.getElementById('tournamentdiv')?.appendChild(bracketDiv);
+      window.bracketsViewer.render(
+        { stages, matches, matchGames, participants },
+        { onMatchClick: (match: any) => console.log(match) }
+      );
+
+      //update the match one 
+
+
+    };
+    initializeTournament();
+  }, [teams, tournament]);
 
   React.useEffect(() => {
-    setMatches(createDoubleEliminationBracket(teams));
-  }, [teams]);
+    const eliminations = document.querySelectorAll('.elimination');
+    if (eliminations.length > 1) {
+      eliminations.forEach((elimination, index) => {
+        if (index < eliminations.length - 1) {
+          elimination.remove();
+        }
+      });
+    }
+  }, [tournament]);
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -209,16 +208,8 @@ function App() {
             <div>
               <h2 className="text-xl font-semibold mb-4">Matches</h2>
               <p>Number of teams: {teams.length}</p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {matches.matches.map((match) => (
-                <div key={match.id} className="border p-4 rounded shadow">
-                  <h3 className="text-lg font-semibold">Match ID: {match.id}</h3>
-                  <p>T1: {match.teams[0]?.name || 'TBD'}</p>
-                  <p>T2: {match.teams[1]?.name || 'TBD'}</p>
-                  <p>{match.isWinnerBracket ? 'Winner Bracket' : 'Loser Bracket'}</p>
-                </div>
-              ))}
+              <div id="tournamentdiv">
+              </div>
             </div>
           </div>
         </div>
