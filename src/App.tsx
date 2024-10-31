@@ -20,7 +20,7 @@ interface Team {
 }
 
 
-const createTournament = async (teams: string[], manager:BracketsManager, double_elimination:Boolean): Promise<any> => {
+const createTournament = async (teams: string[], manager:BracketsManager, double_elimination:boolean, consolidationfinal:boolean): Promise<any> => {
   try {
 
     // fill up the teams array with the NO_TEAM string to the next power of 2
@@ -56,7 +56,7 @@ const createTournament = async (teams: string[], manager:BracketsManager, double
       name: 'Spike rush tournament',
       type: typee,
       seeding: allTeams,
-      settings: { seedOrdering: ['natural'], grandFinal: 'simple' },
+      settings: { seedOrdering: ['natural'], grandFinal: 'double', consolationFinal: consolidationfinal },
     });
     //console.log(JSON.stringify(storage, null, 2));
     return manager;
@@ -83,6 +83,7 @@ const Team: React.FC<TeamProps> = ({ teamName, onDelete }) => {
 function App() {
   const [teams, setTeams] = useState<string[]>(['Team 1', 'Team 2', 'Team 3']);
   const [doubleElimination, setDoubleElimination] = useState<boolean>(false);
+  const [consolidationfinal, setConsolidationfinal] = useState<boolean>(false);
 
   const storage = new InMemoryDatabase();
   const manager = new BracketsManager(storage);
@@ -162,19 +163,73 @@ function App() {
     modal.classList.add('fixed', 'top-0', 'left-0', 'w-full', 'h-full', 'bg-black', 'bg-opacity-50', 'flex', 'justify-center', 'items-center');
     modal.innerHTML = `
       <div class="bg-white p-8 rounded-md w-1/2">
-        <div class="flex justify-between mt-4">
-          <span class="text-xl">${p1name}</span>
-          <button class="bg-green-500 text-white p-2 rounded " id="winner1">Winner</button>
-        </div>
-        <div class="flex justify-between mt-4">
-          <span class="text-xl">${p2name}</span>
-          <button class="bg-green-500 text-white p-2 rounded " id="winner2">Winner</button>
-        </div>
-        <div class="flex justify-between mt-4">
-          <button class="bg-gray-600 text-white p-2 rounded w-full" id="closeModal">Close</button>
+      <div class="flex justify-between mt-4">
+        <span class="text-xl">${p1name}</span>
+        <div class="flex space-x-2">
+        <button class="bg-gray-500 text-white p-2 rounded" id="replace1">replace team</button>
+        <button class="bg-green-500 text-white p-2 rounded" id="winner1">Winner</button>
         </div>
       </div>
+      <div class="flex justify-between mt-4">
+        <span class="text-xl">${p2name}</span>
+        <div class="flex space-x-2">
+        <button class="bg-gray-500 text-white p-2 rounded" id="replace2">replace team</button>
+        <button class="bg-green-500 text-white p-2 rounded" id="winner2">Winner</button>
+        </div>
+      </div>
+      <div class="flex justify-between mt-4">
+        <button class="bg-gray-600 text-white p-2 rounded w-full" id="closeModal">Close</button>
+      </div>
+      </div>
     `;
+
+    const createDropdown = (teams: string[], currentTeam: string) => {
+      const dropdown = document.createElement('select');
+      dropdown.classList.add('bg-gray-200', 'p-2', 'rounded');
+      teams.forEach(team => {
+      if (team !== currentTeam) {
+        const option = document.createElement('option');
+        option.value = team;
+        option.textContent = team;
+        dropdown.appendChild(option);
+      }
+      });
+      return dropdown;
+    };
+
+    modal.querySelector('#replace1')?.addEventListener('click', () => {
+      const dropdown = createDropdown(teams, p1name);
+      modal.querySelector('#replace1')?.replaceWith(dropdown);
+      dropdown.addEventListener('change', async () => {
+      const newTeamName = dropdown.value;
+      const newParticipant = participants.find((participant: any) => participant.name === newTeamName);
+      if (newParticipant) {
+        await manager.update.match({
+        id: match.id,
+        opponent1: { id: newParticipant.id },
+        });
+        await rerendering(manager);
+        modal.remove();
+      }
+      });
+    });
+
+    modal.querySelector('#replace2')?.addEventListener('click', () => {
+      const dropdown = createDropdown(teams, p2name);
+      modal.querySelector('#replace2')?.replaceWith(dropdown);
+      dropdown.addEventListener('change', async () => {
+      const newTeamName = dropdown.value;
+      const newParticipant = participants.find((participant: any) => participant.name === newTeamName);
+      if (newParticipant) {
+        await manager.update.match({
+        id: match.id,
+        opponent2: { id: newParticipant.id },
+        });
+        await rerendering(manager);
+        modal.remove();
+      }
+      });
+    });
 
     modal.querySelector('#winner1')?.addEventListener('click', async () => {
       console.log(p1);
@@ -215,7 +270,7 @@ function App() {
   }
 
   const handleCreateTournament = async () => {
-    const tournamentdata = await createTournament(teams,manager,doubleElimination);
+    const tournamentdata = await createTournament(teams,manager,doubleElimination,consolidationfinal);
 
     //get all the matches from the manager
     let storage = manager.storage
@@ -299,7 +354,7 @@ function App() {
         sortable.destroy();
       };
     }
-  }, [teams]);
+  }, []);
 
 
   
@@ -326,6 +381,16 @@ function App() {
                 onChange={(e) => setDoubleElimination(e.target.checked)}
               />
               <label htmlFor="doubleElimination"> Double Elimination</label>
+            </div>
+            <div>
+              <input
+                type="checkbox"
+                id="consolidationfinal"
+                name="consolidationfinal"
+                checked={consolidationfinal}
+                onChange={(e) => setConsolidationfinal(e.target.checked)}
+              />
+              <label htmlFor="consolidationfinal"> consolidationfinal</label>
             </div>
             <div className='flex'>
               <input id="teamadd" type="text" placeholder="Name of team" className="mt-2 p-2 border" />
