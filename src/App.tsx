@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { BracketsManager } from 'brackets-manager';
 import { InMemoryDatabase } from 'brackets-memory-db';
+import { Seeding } from 'brackets-model';
 import { Sortable } from '@shopify/draggable';
+import { url } from 'inspector';
 
 declare global {
   interface Window {
@@ -25,10 +27,12 @@ const createTournament = async (teams: string[], manager:BracketsManager, double
 
     // fill up the teams array with the NO_TEAM string to the next power of 2
     const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(teams.length)));
-    const noTeam = 'NO_TEAM';
+    const noTeam = null;
     const noTeamCount = nextPowerOf2 - teams.length;
-    const noTeams = Array.from({ length: noTeamCount }, (_, i) => `${noTeam}_${i + 1}`);
 
+    const noTeams = Array.from({ length: noTeamCount }, () => noTeam);
+    let allTeams: Seeding = [...teams, ...noTeams];
+    /*
     // if there are more then 2 NO_TEAM teams, card shuffle the teams
     let allTeams: string[] = [];
     if (noTeams.length >= 2) {
@@ -36,7 +40,7 @@ const createTournament = async (teams: string[], manager:BracketsManager, double
       for (let i = 0; i < noTeams.length; i++) {
         allTeams.push(teams[i]);
         allTeams.push(noTeams[i]);
-        teamsleft--;
+        --teamsleft;
       }
       for (let i = 0; i < teamsleft; i++) {
         allTeams.push(teams[i + noTeams.length]);
@@ -45,6 +49,7 @@ const createTournament = async (teams: string[], manager:BracketsManager, double
     else {
       allTeams = [...teams, ...noTeams];
     }
+    */
 
     
     console.log(allTeams);
@@ -53,10 +58,10 @@ const createTournament = async (teams: string[], manager:BracketsManager, double
 
     await manager.create.stage({
       tournamentId: 0,
-      name: 'Spike rush tournament',
+      name: "Spike Rush Tournament impulsive emp",
       type: typee,
       seeding: allTeams,
-      settings: { seedOrdering: ['natural'], grandFinal: 'double', consolationFinal: consolidationfinal },
+      settings: { seedOrdering: ['natural'], grandFinal: 'double', consolationFinal: consolidationfinal, balanceByes: true },
     });
     //console.log(JSON.stringify(storage, null, 2));
     return manager;
@@ -99,34 +104,6 @@ function App() {
   const rerendering = async (manager:any) => {
     const bracketviewernode = document.querySelector('.brackets-viewer');
     bracketviewernode?.replaceChildren();
-
-    //before rerenndering get all the matches from the manager
-    let matchese = await manager.storage.select('match');
-    let all_participants = await storage.select('participant');
-    let no_team_ids = all_participants ? all_participants.filter((participant: any) => participant.name.includes('NO_TEAM')).map((participant: any) => participant.id) : [];
-    let no_team_matches = matchese ? matchese.filter((match: any) => no_team_ids.includes(match.opponent1.id) || no_team_ids.includes(match.opponent2.id)) : [];
-    console.log(no_team_matches);
-    //update these matches so that the NO_TEAM participant is the loser
-    for (let match of no_team_matches) {
-      try {
-        // check if the opponent1 is a NO_TEAM participant
-        if (match.opponent1 && no_team_ids.includes(match.opponent1.id)) {
-          await manager.update.match({
-            id: match.id,
-            opponent1: { score: 0 },
-            opponent2: { score: 1, result: "win" },
-          });
-        } else {
-          await manager.update.match({
-            id: match.id,
-            opponent1: { score: 1, result: "win" },
-            opponent2: { score: 0 },
-          });
-        }
-      } catch (error) {
-        console.error(error);
-      }
-    }
 
     let new_manager_data = await getManager(manager);
     console.log(new_manager_data);
@@ -276,42 +253,9 @@ function App() {
     let storage = manager.storage
     let matchese = await storage.select('match');
     let all_participants = await storage.select('participant');
-    let no_team_ids = all_participants ? all_participants.filter((participant: any) => participant.name.includes('NO_TEAM')).map((participant: any) => participant.id) : [];
-    console.log(no_team_ids);      
+    
     console.log(matchese);
-    // get all matches where one the participants is a NO_TEAM id
-    let no_team_matches = matchese ? matchese.filter((match: any) => no_team_ids.includes(match.opponent1.id) || no_team_ids.includes(match.opponent2.id)) : [];
-    console.log(no_team_matches);
-    //update these matches so that the NO_TEAM participant is the loser
-    for (let match of no_team_matches) {
-      // check if the opponent1 is a NO_TEAM participant
-      if (match.opponent1 && no_team_ids.includes(match.opponent1.id)) {
-        await manager.update.match({
-          id: match.id,
-          opponent1: { score: 0 },
-          opponent2: { score: 1, result: "win" },
-        });
-      } else {
-        await manager.update.match({
-          id: match.id,
-          opponent1: { score: 1, result: "win" },
-          opponent2: { score: 0 },
-        });
-      }
-    }
-
-    // get the matches again and now look for matches where both participants are NO_TEAM
-    matchese = await storage.select('match');
-    no_team_matches = matchese ? matchese.filter((match: any) => no_team_ids.includes(match.opponent1.id) && no_team_ids.includes(match.opponent2.id)) : [];
-    console.log(no_team_matches);
-    //update these matches so that the first participant is the winner
-    for (let match of no_team_matches) {
-      await manager.update.match({
-        id: match.id,
-        opponent1: { score: 1, result: "win" },
-        opponent2: { score: 0 },
-      });
-    }
+  
 
     rerendering(manager);
   };
@@ -330,31 +274,6 @@ function App() {
       });
     }
   }, [teams]);
-
-  React.useEffect(() => {
-    const draggableElement = document.getElementById('draggableteams');
-    if (draggableElement) {
-      const sortable = new Sortable(draggableElement, {
-        draggable: 'li',
-      });
-
-      sortable.on('sortable:stop', () => {
-        let newTeams = Array.from(draggableElement.children).map((child) => {
-          //get the innerhtml of the span of the child
-          let span = child.querySelector('span');
-          let teamname = span ? span.innerHTML : '';
-          return teamname;
-        });
-        //get unique values
-        newTeams = Array.from(new Set(newTeams));
-        setTeams(newTeams);
-      });
-
-      return () => {
-        sortable.destroy();
-      };
-    }
-  }, []);
 
 
   
